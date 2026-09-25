@@ -1,5 +1,5 @@
 {
-  "name": "remote-pc-web",
+  "name": "remote-pc-client",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -8,6 +8,5 @@
   },
   "dependencies": {
     "vite": "^7.0.0"
-  },
-  "devDependencies": {}
+  }
 }
