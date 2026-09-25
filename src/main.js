@@ -3,103 +3,112 @@ import "./style.css";
 document.querySelector("#app").innerHTML = `
   <header>
     <h1>Remote PC</h1>
-    <span id="status">● Disconnected</span>
+    <div id="status">
+      ● Waiting for host
+    </div>
   </header>
 
   <main>
-    <section class="connection">
-      <h2>Connect</h2>
-
-      <input
-        id="host"
-        placeholder="http://192.168.1.50:8080"
-      >
-
-      <input
-        id="token"
-        type="password"
-        placeholder="Access token"
-      >
-
-      <button id="connect">Connect</button>
-    </section>
-
     <section class="screen-panel">
-      <div class="screen-header">
+      <div class="panel-header">
         <span>Host Screen</span>
-        <span id="screenStatus">Disconnected</span>
+        <span id="screenStatus">Waiting...</span>
       </div>
 
       <div id="screen">
+        <div class="waiting">
+          <div class="spinner"></div>
+          <p>Waiting for host...</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="terminal-panel">
+      <div class="panel-header">
+        <span>Terminal</span>
         <span>Not connected</span>
+      </div>
+
+      <div id="terminal">
+        Host has not connected.
       </div>
     </section>
   </main>
 `;
 
-const hostInput = document.querySelector("#host");
-const tokenInput = document.querySelector("#token");
-const connectButton = document.querySelector("#connect");
-
 const status = document.querySelector("#status");
 const screenStatus = document.querySelector("#screenStatus");
 const screen = document.querySelector("#screen");
 
-let timer = null;
+let socket = null;
 
-connectButton.addEventListener("click", () => {
-    const host = hostInput.value.trim().replace(/\/$/, "");
-    const token = tokenInput.value.trim();
+function connectToRelay() {
+    /*
+     * The actual WebSocket/relay URL goes here.
+     *
+     * Example:
+     * const url = "wss://your-relay.example.com";
+     */
 
-    if (!host || !token) {
-        alert("Enter the host address and access token.");
-        return;
-    }
+    const url = "wss://YOUR-RELAY-SERVER";
 
-    if (timer) {
-        clearInterval(timer);
-    }
+    try {
+        socket = new WebSocket(url);
 
-    status.textContent = "● Connecting...";
-    screenStatus.textContent = "Connecting...";
+        socket.addEventListener("open", () => {
+            status.textContent = "● Connected";
+            screenStatus.textContent = "Waiting for host";
 
-    const updateScreen = async () => {
-        try {
-            const response = await fetch(
-                `${host}/screen?token=${encodeURIComponent(token)}&t=${Date.now()}`
-            );
+            socket.send(JSON.stringify({
+                type: "client",
+                action: "discover-host"
+            }));
+        });
 
-            if (!response.ok) {
-                throw new Error("Connection failed");
+        socket.addEventListener("message", async (event) => {
+            let message;
+
+            try {
+                message = JSON.parse(event.data);
+            } catch {
+                return;
             }
 
-            const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
+            if (message.type === "host-online") {
+                status.textContent = "● Host found";
+                screenStatus.textContent = "Connecting...";
+            }
 
-            const oldImage = screen.querySelector("img");
+            if (message.type === "screen") {
+                displayScreen(message.data);
+            }
+        });
 
-            const img = document.createElement("img");
-            img.src = url;
-
-            img.onload = () => {
-                if (oldImage) {
-                    oldImage.remove();
-                }
-
-                screen.replaceChildren(img);
-                URL.revokeObjectURL(url);
-            };
-
-            status.textContent = "● Connected";
-            screenStatus.textContent = "Live";
-        } catch (error) {
+        socket.addEventListener("close", () => {
             status.textContent = "● Disconnected";
-            screenStatus.textContent = "Connection failed";
-        }
+            screenStatus.textContent = "Waiting for host";
+        });
+
+        socket.addEventListener("error", () => {
+            status.textContent = "● Connection error";
+        });
+
+    } catch {
+        status.textContent = "● Unable to connect";
+    }
+}
+
+function displayScreen(data) {
+    if (!data) return;
+
+    const image = document.createElement("img");
+
+    image.src = `data:image/jpeg;base64,${data}`;
+
+    image.onload = () => {
+        screen.replaceChildren(image);
+        screenStatus.textContent = "Live";
     };
+}
 
-    updateScreen();
-
-    // Update approximately twice per second.
-    timer = setInterval(updateScreen, 500);
-});
+connectToRelay();
